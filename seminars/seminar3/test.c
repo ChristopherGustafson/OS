@@ -28,7 +28,7 @@ void *test_cond(void *arg){
             green_cond_signal(&cond);
         }
         else{
-            green_cond_wait(&cond);
+            //green_cond_wait(&cond);
         }
     }
 }
@@ -59,7 +59,7 @@ void *test_mutex_wait(void *arg){
         green_mutex_lock(&mutex);
         while(flag != id){
             green_mutex_unlock(&mutex);
-            green_cond_wait(&cond);
+            green_cond_wait(&cond, &mutex);
         }
         flag = (id+1) % 2;
         green_cond_signal(&cond);

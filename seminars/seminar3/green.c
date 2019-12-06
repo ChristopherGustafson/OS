@@ -192,9 +192,10 @@ void green_cond_init(green_cond_t *cond_var){
 }
 
 // Suspend the current thread to cond_var
-void green_cond_wait(green_cond_t *cond_var, green_mutex_t *mutex){
+int green_cond_wait(green_cond_t *cond_var, green_mutex_t *mutex){
     sigprocmask(SIG_BLOCK, &block, NULL);
 
+    // Suspend the running thread on condition
     green_t *susp = running;
     green_t *current = cond_var->first;
     if(current != NULL){
@@ -207,11 +208,46 @@ void green_cond_wait(green_cond_t *cond_var, green_mutex_t *mutex){
         cond_var->first = susp;
     }
 
+    if(mutex != NULL){
+        // release the lock if we have a mutex
+        green_mutex_unlock(mutex);
+
+        //schedule the suspended threads
+        enqueueReady(susp);
+    }
+
     // Select next thread for execution
     struct green_t *next = dequeueReady();
     running = next;
     swapcontext(susp->context, next->context);
+    
+    if(mutex != NULL){
+        // try to take the lock
+        if(mutex->taken) {
+            //bad luck, suspend
+            if(mutex->firstWaiting == NULL){
+                mutex->firstWaiting = susp;
+            }
+            else{
+                green_t *current = mutex->firstWaiting;
+                while(current->next != NULL){
+                    current = current->next;
+                }
+                current->next = susp;
+            }
+            green_t *next = dequeueReady();
+            running = next;
+            swapcontext(susp->context, next->context);
+        }
+        else{
+            // take lock
+            mutex->taken = TRUE;
+        }
+    
+    }    
     sigprocmask(SIG_UNBLOCK, &block, NULL);
+    return 0;
+
 }
 
 // move the first suspended thread to the ready queue

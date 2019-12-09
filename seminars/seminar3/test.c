@@ -52,7 +52,7 @@ void *test_mutex(void *arg){
 void *test_mutex_wait(void *arg){
 
     int id = *(int*)arg;
-    int loop = 100000;
+    int loop = 1000000;
    
     while(loop > 0) {
         printf("thread %d: %d\n", id, loop);
@@ -65,10 +65,7 @@ void *test_mutex_wait(void *arg){
         green_cond_signal(&cond);
         green_mutex_unlock(&mutex);
         loop--;
-    
     }
-
-
 }
 
 int main() {

@@ -97,12 +97,9 @@ void printReadyQ() {
 void green_thread() {
 
     struct green_t *this = running;
-
-
     void *result = (*this->fun)(this->arg);
 
-    //place waiting (joining) thread in ready queue
-
+    //place waiting (joining) thread in ready queue, this thread is waiting for my result
     if(this->join != NULL){
         enqueueReady(this->join);
     }
@@ -110,27 +107,37 @@ void green_thread() {
     // save result of execution
     this->retval = result;
 
+    /*
+    We cannot do this, we cannot free our own stack cause otherwise we cant return from the function
     // free allocated memory structures
     free(this->context->uc_stack.ss_sp);
+    // Free context?
+    free(this->context);
+    */
 
     // we're a zombie
     this->zombie = TRUE;
 
     // find the next thread to run
-    running = dequeueReady();
-
+    green_t *next = dequeueReady();
+    running = next;
     setcontext(running->context);    
 }
 
+
+// Populate the green_t datastructure and then add to ready queue
 int green_create(green_t *new, void *(*fun)(void*), void *arg) {
 
+    // Malloc space for context
     ucontext_t *cntx = (ucontext_t *)malloc(sizeof(ucontext_t));
     getcontext(cntx);
 
+    // Malloc space for the stack
     void *stack = malloc(STACK_SIZE);
 
     cntx->uc_stack.ss_sp = stack;
     cntx->uc_stack.ss_size = STACK_SIZE;
+    //When context start executing, start exucuting function "green_thread"
     makecontext(cntx, green_thread, 0);
 
     new->context = cntx;
@@ -148,12 +155,10 @@ int green_create(green_t *new, void *(*fun)(void*), void *arg) {
 }
 
 int green_yield() {
-    struct green_t *susp = running;
-    
-
-    // add susp to ready queue
     sigprocmask(SIG_BLOCK, &block, NULL);
 
+    struct green_t *susp = running;
+    // add susp to ready queue
     enqueueReady(susp);
     struct green_t *next = dequeueReady();
     running = next;
@@ -165,6 +170,8 @@ int green_yield() {
 
 int green_join(green_t *thread, void **res) {
 
+    sigprocmask(SIG_BLOCK, &block, NULL);
+
     if(thread->zombie){
         //collect the result
         res = thread->retval;
@@ -174,8 +181,6 @@ int green_join(green_t *thread, void **res) {
     struct green_t *susp = running;
     // add as joining thread
     thread->join = susp;
-
-    sigprocmask(SIG_BLOCK, &block, NULL);
 
     // select the next thread for execution
     struct green_t *next = dequeueReady();
@@ -208,12 +213,14 @@ int green_cond_wait(green_cond_t *cond_var, green_mutex_t *mutex){
         cond_var->first = susp;
     }
 
+    /* SOMETHING IS PROBABLY WRONG HERE */
+
     if(mutex != NULL){
         // release the lock if we have a mutex
         green_mutex_unlock(mutex);
 
         //schedule the suspended threads
-        enqueueReady(susp);
+        enqueueReady(mutex->firstWaiting);
     }
 
     // Select next thread for execution
@@ -224,7 +231,7 @@ int green_cond_wait(green_cond_t *cond_var, green_mutex_t *mutex){
     if(mutex != NULL){
         // try to take the lock
         if(mutex->taken) {
-            //bad luck, suspend
+            //bad luck, suspend on the lock
             if(mutex->firstWaiting == NULL){
                 mutex->firstWaiting = susp;
             }
@@ -243,11 +250,9 @@ int green_cond_wait(green_cond_t *cond_var, green_mutex_t *mutex){
             // take lock
             mutex->taken = TRUE;
         }
-    
-    }    
+    }
     sigprocmask(SIG_UNBLOCK, &block, NULL);
     return 0;
-
 }
 
 // move the first suspended thread to the ready queue
@@ -284,6 +289,7 @@ int green_mutex_lock(green_mutex_t *mutex){
         swapcontext(susp->context, next->context);
     }
     else{
+        //Take the lock
         mutex->taken = TRUE;
     }
     sigprocmask(SIG_UNBLOCK, &block, NULL);

@@ -5,7 +5,6 @@ typedef struct green_t {
     void *(*fun)(void*);
     void *arg;
     struct green_t *next;
-    //struct void *retval;
     struct green_t *join;
     void *retval;
     int zombie;

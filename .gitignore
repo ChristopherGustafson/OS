@@ -1,1 +1,5 @@
 .vscode/
+*.cmd
+*.o
+.tmp_versions/
+*.ko
